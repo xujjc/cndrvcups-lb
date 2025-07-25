@@ -1,34 +1,10 @@
-Source: cndrvcups-lb
-Section: net
+Package: cndrvcups-lb-armhf
+Version: 2.40-1
+Section: utils
 Priority: optional
-Maintainer: Canon Inc. <sup-debian@list.canon.co.jp>
-Build-Depends: debhelper (>= 4.0.0)
-Standards-Version: 3.6.1
-
-Package: cndrvcups-ufr2-uk
-Architecture: i386
-Depends: ${shlibs:Depends}, ${misc:Depends}, cndrvcups-common (>= 2.40)
-Replaces: cndrvcups-ufr2-us, cndrvcups-lipslx, cndrvcups-capt, cndrvcups-lips4, cndrvcups-ps3-uk
-Description: Canon UFR2 Printer Driver for Linux
- Canon UFR2 Printer Driver for Linux.
- This UFR2 printer driver provides printing functions for Canon LBP/iR
- printers operating under the CUPS (Common UNIX Printing System) environment.
-
-Package: cndrvcups-ufr2-us
-Architecture: i386
-Depends: ${shlibs:Depends}, ${misc:Depends}, cndrvcups-common (>= 2.40)
-Replaces: cndrvcups-ufr2-uk, cndrvcups-lipslx, cndrvcups-capt, cndrvcups-lips4, cndrvcups-ps3-uk
-Description: Canon UFR2 Printer Driver for Linux
- Canon UFR2 Printer Driver for Linux.
- This UFR2 printer driver provides printing functions for Canon LBP/iR
- printers operating under the CUPS (Common UNIX Printing System) environment.
-
-Package: cndrvcups-lipslx
-Architecture: i386
-Depends: ${shlibs:Depends}, ${misc:Depends}, cndrvcups-common (>= 2.40)
-Replaces: cndrvcups-ufr2-us, cndrvcups-ufr2-uk, cndrvcups-capt, cndrvcups-lips4, cndrvcups-ps3-uk
-Description: Canon LIPSLX Printer Driver for Linux
- Canon LIPSLX Printer Driver for Linux.
- This LIPSLX printer driver provides printing functions for Canon LBP/iR
- printers operating under the CUPS (Common UNIX Printing System) environment.
-
+Architecture: armhf
+Depends: libcups2 (>=1.1.17), libcupsimage2, libxml2 (>=2.6), libgtk2.0-0 (>=2.4), libglade2-0 (>=2.4), cups (>=1.1.17)
+Maintainer: xujjc ＜384066327@qq.com>  # 替换为你的名字和邮箱
+Description: Canon UFR II/LIPSLX Printer Driver for ARMHF (适配佳能MF4452)
+ This package contains the CUPS driver for Canon MF4452 and other MF4400 series printers,
+ compiled for ARMHF architecture (e.g., Hi3798V100 with Ubuntu 20.04).
