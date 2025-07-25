@@ -1,0 +1,56 @@
+name: 编译并打包 ARMHF 驱动为 Deb 包
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: 拉取仓库源码
+        uses: actions/checkout@v4
+
+      - name: 安装依赖（编译 + Deb 打包工具）
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt update
+          # 编译依赖
+          sudo apt install -y crossbuild-essential-armhf libcups2-dev:armhf libcupsimage2-dev:armhf libxml2-dev:armhf libgtk2.0-dev:armhf libglade2-dev:armhf automake autoconf libtool
+          # Deb 打包工具
+          sudo apt install -y debhelper dpkg-dev fakeroot
+
+      - name: 生成 ARMHF 编译脚本
+        run: |
+          cat > allgen-armhf.sh << 'EOF'
+          #!/bin/sh
+          _prefix=/usr
+          _libdir=/usr/lib/arm-linux-gnueabihf
+          # 配置各模块（指定 armhf 宿主）
+          cd ppd && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf && cd ..
+          cd pstoufr2cpca && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf && cd ..
+          cd backend && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf && cd ..
+          cd cngplp && ./autogen.sh --prefix=${_prefix} --libdir=${_libdir} --host=arm-linux-gnueabihf && cd ..
+          cd cpca && ./autogen.sh --prefix=${_prefix} --enable-static --disable-shared --host=arm-linux-gnueabihf && cd ..
+          EOF
+          chmod +x allgen-armhf.sh
+
+      - name: 执行编译
+        run: |
+          ./allgen-armhf.sh
+          make -j$(nproc)
+
+      - name: 打包为 Deb 包
+        run: |
+          # 确保 debian 目录权限正确
+          chmod -R 755 debian/
+          # 使用 fakeroot 和 debhelper 打包
+          fakeroot dh_binary --host-arch armhf
+          # 重命名生成的 deb 包（方便识别）
+          mv ../cndrvcups-lb-armhf_2.40-1_armhf.deb ./  # 从上级目录移动到当前目录
+
+      - name: 上传 Deb 包
+        uses: actions/upload-artifact@v4
+        with:
+          name: canon-mf4452-armhf-deb
+          path: cndrvcups-lb-armhf_2.40-1_armhf.deb
