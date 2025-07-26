@@ -55,7 +55,9 @@ jobs:
               missing=1
             fi
           done
-          [ $missing -eq 0 ] || exit 1
+          if [ $missing -ne 0 ]; then
+            exit 1
+          fi
 
       - name: 生成ARMHF编译脚本
         run: |
@@ -64,18 +66,18 @@ jobs:
           set -ex
           _prefix=/usr
           _libdir=/usr/lib/arm-linux-gnueabihf
-          
+
           # 清理之前的构建
           find . -name Makefile -exec rm -f {} +
           find . -name config.status -exec rm -f {} +
-          
+
           # 依次配置各个组件
           (cd ppd && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf)
           (cd pstoufr2cpca && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf)
           (cd backend && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf)
           (cd cngplp && ./autogen.sh --prefix=${_prefix} --libdir=${_libdir} --host=arm-linux-gnueabihf)
           (cd cpca && ./autogen.sh --prefix=${_prefix} --enable-static --disable-shared --host=arm-linux-gnueabihf)
-          EOF
+           EOF
           chmod +x allgen-armhf.sh
 
       - name: 执行编译
@@ -83,11 +85,8 @@ jobs:
           # 先执行配置
           ./allgen-armhf.sh
           
-          # 尝试并行编译（失败时自动降级）
-          if ! make -j$(($(nproc) + 1)); then
-            echo "多线程编译失败，尝试单线程编译..."
-            make
-          fi
+          # 尝试并行编译
+          make -j$(($(nproc) + 1)) || make
 
       - name: 清理之前的构建产物
         run: |
