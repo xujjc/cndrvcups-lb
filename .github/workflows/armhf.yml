@@ -1,63 +1,124 @@
 name: 编译并打包 ARMHF 驱动为 Deb 包
 on:
   push:
-    branches: [ main ]  # 推送代码触发
-  workflow_dispatch:     # 手动触发
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-deb:
     runs-on: ubuntu-20.04
+    timeout-minutes: 12
+
     steps:
       - name: 拉取仓库源码
         uses: actions/checkout@v4
 
+      - name: 缓存ARMHF依赖
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/apt
+            /var/cache/apt/archives
+          key: ${{ runner.os }}-armhf-deps-${{ hashFiles('**/debian/control') }}
+          restore-keys: |
+            ${{ runner.os }}-armhf-deps-
+
       - name: 安装编译和打包依赖
         run: |
           sudo dpkg --add-architecture armhf
-          sudo apt update
-          # 编译依赖（armhf 工具链 + CUPS 库）
-          sudo apt install -y \
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
             crossbuild-essential-armhf \
             libcups2-dev:armhf \
             libcupsimage2-dev:armhf \
             libxml2-dev:armhf \
             libgtk2.0-dev:armhf \
             libglade2-dev:armhf \
-            automake autoconf libtool
-          # Debian 打包依赖（核心工具）
-          sudo apt install -y \
-            debhelper dpkg-dev fakeroot
+            libpopt-dev:armhf \
+            automake autoconf libtool \
+            debhelper devscripts dpkg-dev fakeroot
 
-      - name: 生成 ARMHF 编译脚本
+      - name: 检查必要编译脚本
+        run: |
+          required_scripts=(
+            "ppd/autogen.sh"
+            "pstoufr2cpca/autogen.sh"
+            "backend/autogen.sh"
+            "cngplp/autogen.sh"
+            "cpca/autogen.sh"
+          )
+          missing=0
+          for script in "${required_scripts[@]}"; do
+            if [ ! -f "$script" ]; then
+              echo "::error::缺少必要脚本: $script"
+              missing=1
+            fi
+          done
+          [ $missing -eq 0 ] || exit 1
+
+      - name: 生成ARMHF编译脚本
         run: |
           cat > allgen-armhf.sh << 'EOF'
-          #!/bin/sh
-          set -x  # 开启命令调试（日志更详细）
+          #!/bin/bash
+          set -ex
           _prefix=/usr
           _libdir=/usr/lib/arm-linux-gnueabihf
-          # 配置各模块（指定 armhf 宿主）
-          cd ppd && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf && cd ..
-          cd pstoufr2cpca && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf && cd ..
-          cd backend && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf && cd ..
-          cd cngplp && ./autogen.sh --prefix=${_prefix} --libdir=${_libdir} --host=arm-linux-gnueabihf && cd ..
-          cd cpca && ./autogen.sh --prefix=${_prefix} --enable-static --disable-shared --host=arm-linux-gnueabihf && cd ..
+          
+          # 清理之前的构建
+          find . -name Makefile -exec rm -f {} +
+          find . -name config.status -exec rm -f {} +
+          
+          # 依次配置各个组件
+          (cd ppd && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf)
+          (cd pstoufr2cpca && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf)
+          (cd backend && ./autogen.sh --prefix=${_prefix} --host=arm-linux-gnueabihf)
+          (cd cngplp && ./autogen.sh --prefix=${_prefix} --libdir=${_libdir} --host=arm-linux-gnueabihf)
+          (cd cpca && ./autogen.sh --prefix=${_prefix} --enable-static --disable-shared --host=arm-linux-gnueabihf)
           EOF
           chmod +x allgen-armhf.sh
 
-      - name: 执行编译（带调试日志）
+      - name: 执行编译
         run: |
+          # 先执行配置
           ./allgen-armhf.sh
-          make -j$(nproc)  # 多线程编译（若卡壳可改为 make）
+          
+          # 尝试并行编译（失败时自动降级）
+          if ! make -j$(($(nproc) + 1)); then
+            echo "多线程编译失败，尝试单线程编译..."
+            make
+          fi
 
-      - name: 打包为 Deb 包（标准流程）
+      - name: 清理之前的构建产物
         run: |
-          # 使用 debhelper 标准流程打包
-          debuild -us -uc -a armhf  # -us/-uc: 不签名；-a: 指定架构
-          # 将生成的 Deb 包移动到当前目录（debuild 会输出到上级目录）
+          # 删除可能存在的旧deb包
+          rm -f ../cndrvcups-lb-armhf_*.deb ./*.deb || true
+          # 清理debuild临时文件
+          rm -rf debian/cndrvcups-lb-armhf* debian/files || true
+
+      - name: 打包为Deb包
+        run: |
+          # 设置ARMHF架构
+          export DEB_BUILD_OPTIONS="nocheck"
+          export DEB_HOST_ARCH=armhf
+          
+          # 使用dpkg-buildpackage构建
+          dpkg-buildpackage -us -uc -aarmhf -B
+          
+          # 移动生成的deb包
           mv ../cndrvcups-lb-armhf_*.deb ./
 
-      - name: 上传 Deb 包
+      - name: 验证Deb包存在
+        run: |
+          if ! ls cndrvcups-lb-armhf_*.deb >/dev/null 2>&1; then
+            echo "::error::未生成Deb包文件"
+            exit 1
+          fi
+          echo "生成的Deb包:"
+          ls -lh cndrvcups-lb-armhf_*.deb
+
+      - name: 上传Deb包制品
         uses: actions/upload-artifact@v4
         with:
           name: canon-mf4452-armhf-deb
-          path: cndrvcups-lb-armhf_*.deb  # 匹配所有版本的 Deb 包
+          path: cndrvcups-lb-armhf_*.deb
